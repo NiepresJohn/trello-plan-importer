@@ -12,9 +12,6 @@ Create a **new Trello board** from an AI-generated plan. Paste a JSON plan (gene
   - [Get Trello API Credentials](#get-trello-api-credentials)
   - [Installation](#installation)
   - [Environment Setup](#environment-setup)
-- [Deployment](#deployment)
-  - [Deploy to Netlify](#deploy-to-netlify)
-  - [Deploy to Vercel](#deploy-to-vercel)
 - [Usage Guide](#usage-guide)
 - [JSON Structure](#json-structure)
 - [Architecture](#architecture)
@@ -53,7 +50,6 @@ Before you begin, make sure you have:
 - A [Trello](https://trello.com) account
 - [Node.js](https://nodejs.org) (version 18 or higher)
 - [Git](https://git-scm.com) installed on your machine
-- A hosting platform account ([Netlify](https://netlify.com) or [Vercel](https://vercel.com))
 
 ### Get Trello API Credentials
 
@@ -152,68 +148,6 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser to see the app.
-
----
-
-## Deployment
-
-### Deploy to Netlify
-
-Netlify is the recommended deployment platform for this project.
-
-**Step 1: Prepare your repository**
-
-1. Push your code to GitHub:
-```bash
-git remote add origin https://github.com/YourUsername/trello-plan-importer.git
-git push -u origin main
-```
-
-**Step 2: Create a Netlify site**
-
-1. Log in to [Netlify](https://app.netlify.com)
-2. Click **"Add new site"** → **"Import an existing project"**
-3. Choose **"GitHub"** and authorize Netlify to access your repositories
-4. Select your `trello-plan-importer` repository
-5. Configure build settings:
-   - **Build command:** `npm run build`
-   - **Publish directory:** `.next`
-   - Netlify will automatically detect Next.js and apply the correct settings
-
-**Step 3: Add environment variables**
-
-1. In your Netlify site dashboard, go to **Site settings** → **Environment variables**
-2. Click **"Add a variable"** and add each of the following:
-   - `TRELLO_KEY`
-   - `TRELLO_TOKEN`
-   - `WEBHOOK_SECRET`
-   - `DEFAULT_BOARD_NAME` (optional)
-   - `DEFAULT_LIST_NAME` (optional)
-
-3. Click **"Save"**
-
-**Step 4: Deploy**
-
-1. Click **"Deploy site"**
-2. Wait for the build to complete (usually 1-2 minutes)
-3. Your site will be live at `https://your-site-name.netlify.app`
-
-**Step 5: (Optional) Custom domain**
-
-1. Go to **Site settings** → **Domain management**
-2. Click **"Add custom domain"**
-3. Follow the instructions to configure your DNS
-
-### Deploy to Vercel
-
-Alternatively, you can deploy to Vercel:
-
-1. Push your code to GitHub
-2. Log in to [Vercel](https://vercel.com)
-3. Click **"New Project"**
-4. Import your `trello-plan-importer` repository
-5. Add environment variables in the **Environment Variables** section
-6. Click **"Deploy"**
 
 ---
 
@@ -393,7 +327,6 @@ trello-plan-importer/
 │   ├── globals.css
 │   ├── layout.tsx
 │   └── page.tsx                    # Home page
-├── netlify.toml
 ├── next.config.js
 ├── package.json
 └── README.md
@@ -514,20 +447,12 @@ The app includes optional rate limiting:
 1. Set `ALLOW_LABEL_CREATE=true` in your environment variables
 2. Ensure label names match those defined in `board.labels`
 
-### Issue: Build fails on Netlify
-
-**Solution:**
-1. Check build logs for specific errors
-2. Verify `package.json` has all required dependencies
-3. Ensure `netlify.toml` is present with correct configuration
-4. Clear build cache: **Site settings** → **Build & deploy** → **Clear cache and retry deploy**
-
 ### Issue: Environment variables not working
 
 **Solution:**
-1. In Netlify: Go to **Site settings** → **Environment variables** and verify all variables are set
-2. Variable changes require a new deployment to take effect
-3. Click **Deploys** → **Trigger deploy** → **Deploy site**
+1. Verify all required variables are set in your `.env.local` file
+2. Restart your development server after changing environment variables: `npm run dev`
+3. Ensure the `.env.local` file is in the project root directory
 
 ---
 
@@ -541,7 +466,6 @@ Please include:
 - A description of your issue
 - Steps to reproduce (if applicable)
 - Screenshots or error messages
-- Your deployment platform (Netlify, Vercel, local)
 
 ---
 
@@ -559,8 +483,5 @@ MIT License - feel free to use this project for personal or commercial purposes.
 - Draft editor with card management
 - One-click Trello board creation
 - Replace mode for existing boards
-- Netlify deployment support
 
 ---
-
-**Made with ❤️ for developers who love automation**
