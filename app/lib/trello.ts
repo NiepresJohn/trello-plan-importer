@@ -58,8 +58,7 @@ export async function getBoards() {
 export async function createBoard(name: string) {
   const res = await trelloRequest("boards", {
     method: "POST",
-    params: { name: name.trim(), defaultLists: "false" },
-    body: {},
+    body: { name: name.trim(), defaultLists: "false" },
   });
   if (!res.ok) return res as TrelloResponse<TrelloBoard>;
   const raw = res.data as { id: string; name: string };
@@ -99,10 +98,10 @@ export async function getLabels(boardId: string) {
   return { ok: true, data: res.data as TrelloLabel[] } as TrelloResponse<TrelloLabel[]>;
 }
 
-export async function createLabel(boardId: string, name: string) {
+export async function createLabel(boardId: string, name: string, color?: string) {
   const res = await trelloRequest("labels", {
     method: "POST",
-    body: { idBoard: boardId, name, color: "blue" },
+    body: { idBoard: boardId, name, color: color || "blue" },
   });
   if (!res.ok) return res as TrelloResponse<TrelloLabel>;
   return { ok: true, data: res.data as TrelloLabel } as TrelloResponse<TrelloLabel>;

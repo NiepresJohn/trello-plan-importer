@@ -1,11 +1,26 @@
 import { NextResponse } from "next/server";
-import { getBoards, getLists, resolveOrCreateBoard, resolveOrCreateList } from "../../../lib/trello";
+import { getBoards, getLists, resolveOrCreateBoard } from "../../../lib/trello";
+import { validateWebhookSecret } from "../../../lib/auth";
+import { checkRateLimit, getClientIp } from "../../../lib/rateLimit";
 
 export async function GET(request: Request) {
+  // Fix #3: validate webhook secret
+  if (!validateWebhookSecret(request)) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Fix #10: rate limiting
+  const ip = getClientIp(request);
+  if (!checkRateLimit(ip)) {
+    return NextResponse.json({ ok: false, error: "Too many requests. Please wait and try again." }, { status: 429 });
+  }
+
   const url = new URL(request.url);
   const boardName = url.searchParams.get("boardName")?.trim() || "";
   const boardId = url.searchParams.get("boardId")?.trim() || "";
-  const listName = url.searchParams.get("listName")?.trim() || "";
+
+  // Fix #5: removed listName param — GET routes must not have side effects.
+  // List creation only happens at commit time via POST /api/trello/commit.
 
   try {
     const boardsResp = await getBoards();
@@ -31,9 +46,6 @@ export async function GET(request: Request) {
         return NextResponse.json({ ok: false, ...parsed }, { status: resolved.status });
       }
       resolvedBoard = resolved.data;
-      if (listName) {
-        await resolveOrCreateList(resolved.data.id, listName);
-      }
       const listResp = await getLists(resolved.data.id);
       if (!listResp.ok) {
         return NextResponse.json(

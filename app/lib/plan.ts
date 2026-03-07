@@ -1,8 +1,10 @@
+export type LabelInput = string | { name: string; color?: string };
+
 export type PlanItem = {
   name: string;
   desc: string;
   due: string | null;
-  labels: string[];
+  labels: LabelInput[];
   checklist: string[];
   /** When set, card is created in this list (from JSON board structure). */
   listName?: string;
@@ -19,6 +21,31 @@ export type ValidationResult<T> = { ok: true; data: T } | { ok: false; error: st
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item) => typeof item === "string").map((item) => item.trim()).filter(Boolean);
+}
+
+const VALID_LABEL_COLORS = new Set([
+  "yellow", "purple", "blue", "red", "green",
+  "orange", "black", "sky", "pink", "lime",
+]);
+
+function toLabelArray(value: unknown): LabelInput[] {
+  if (!Array.isArray(value)) return [];
+  const result: LabelInput[] = [];
+  for (const item of value) {
+    if (typeof item === "string" && item.trim()) {
+      result.push(item.trim());
+    } else if (item && typeof item === "object") {
+      const obj = item as Record<string, unknown>;
+      const name = (typeof obj.name === "string" ? obj.name : "").trim();
+      if (!name) continue;
+      const color =
+        typeof obj.color === "string" && VALID_LABEL_COLORS.has(obj.color.toLowerCase())
+          ? obj.color.toLowerCase()
+          : undefined;
+      result.push(color ? { name, color } : name);
+    }
+  }
+  return result;
 }
 
 function normalizeDue(value: unknown): string | null {
@@ -52,7 +79,7 @@ export function validatePlan(payload: unknown): ValidationResult<TaskPlan> {
     if (!name) continue;
     const desc = typeof item.desc === "string" ? item.desc : "";
     const due = normalizeDue(item.due);
-    const labels = toStringArray(item.labels);
+    const labels = toLabelArray(item.labels);
     const checklist = toStringArray(item.checklist);
     const itemListName = typeof item.listName === "string" ? item.listName.trim() : undefined;
 
@@ -100,7 +127,7 @@ export function validatePlanLenient(payload: unknown): ValidationResult<TaskPlan
       "Untitled";
     const desc = typeof item.desc === "string" ? item.desc : "";
     const due = normalizeDue(item.due);
-    const labels = toStringArray(item.labels);
+    const labels = toLabelArray(item.labels);
     const checklist = toStringArray(item.checklist);
     const itemListName = typeof item.listName === "string" ? item.listName.trim() : undefined;
 

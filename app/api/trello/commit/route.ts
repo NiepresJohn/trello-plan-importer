@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { validatePlan } from "../../../lib/plan";
+import { validateWebhookSecret } from "../../../lib/auth";
+import { checkRateLimit, getClientIp } from "../../../lib/rateLimit";
 import {
   addChecklistItem,
   addLabelToCard,
@@ -14,6 +16,17 @@ import {
 } from "../../../lib/trello";
 
 export async function POST(request: Request) {
+  // Fix #3: validate webhook secret
+  if (!validateWebhookSecret(request)) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Fix #10: rate limiting
+  const ip = getClientIp(request);
+  if (!checkRateLimit(ip)) {
+    return NextResponse.json({ ok: false, error: "Too many requests. Please wait and try again." }, { status: 429 });
+  }
+
   const body = await request.json().catch(() => null);
   if (!body || typeof body !== "object") {
     return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
@@ -23,6 +36,9 @@ export async function POST(request: Request) {
   if (!result.ok) {
     return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
   }
+
+  // Fix #4: replace is now opt-in (defaults to false)
+  const replace = (body as Record<string, unknown>).replace === true;
 
   const plan = result.data;
   const defaultListName = plan.listName || process.env.DEFAULT_LIST_NAME || "To Do";
@@ -40,11 +56,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, ...parsed }, { status: resolvedBoard.status });
   }
 
-  // Replace behavior: archive all existing lists (and their cards) on the board before creating the new structure
-  const existingLists = await getLists(resolvedBoard.data.id);
-  if (existingLists.ok && existingLists.data.length > 0) {
-    for (const list of existingLists.data) {
-      await archiveList(list.id);
+  // Fix #4: only archive existing lists when replace is explicitly true
+  if (replace) {
+    const existingLists = await getLists(resolvedBoard.data.id);
+    if (existingLists.ok && existingLists.data.length > 0) {
+      for (const list of existingLists.data) {
+        await archiveList(list.id);
+      }
     }
   }
 
@@ -99,15 +117,18 @@ export async function POST(request: Request) {
         continue;
       }
 
+      // Fix #7: support label color from PlanItem
       const labels = item.labels || [];
       if (labels.length > 0) {
-        for (const labelName of labels) {
+        for (const label of labels) {
+          const labelName = typeof label === "string" ? label : label.name;
+          const labelColor = typeof label === "string" ? undefined : label.color;
           const existing = labelsResp.data.find(
-            (label) => label.name && label.name.toLowerCase() === labelName.trim().toLowerCase()
+            (l) => l.name && l.name.toLowerCase() === labelName.trim().toLowerCase()
           );
           let labelId = existing ? existing.id : null;
           if (!labelId && allowCreate) {
-            const created = await createLabel(resolvedBoard.data.id, labelName);
+            const created = await createLabel(resolvedBoard.data.id, labelName, labelColor);
             if (created.ok) {
               labelId = created.data.id;
             }

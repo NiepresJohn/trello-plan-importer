@@ -98,6 +98,8 @@ export default function TaskPlanner() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [lists, setLists] = useState<List[]>([]);
   const [loadingMeta, setLoadingMeta] = useState(false);
+  const [committing, setCommitting] = useState(false);
+  const [replaceMode, setReplaceMode] = useState(false);
   const [commitResults, setCommitResults] = useState<CommitResult[]>([]);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState<1 | 2 | 3 | 4>(1);
@@ -105,6 +107,7 @@ export default function TaskPlanner() {
   const [showCommitSuccessToast, setShowCommitSuccessToast] = useState(false);
   const [savedDraftAt, setSavedDraftAt] = useState<string | null>(null);
   const [hasSavedDraft, setHasSavedDraft] = useState(false);
+  const [staleDraftWarning, setStaleDraftWarning] = useState(false);
   const [importResult, setImportResult] = useState<
     { ok: true; itemCount: number; boardName: string; listName: string } | { ok: false; error: string } | null
   >(null);
@@ -172,6 +175,10 @@ export default function TaskPlanner() {
     }
     if (storedAt) {
       setSavedDraftAt(storedAt);
+      const DRAFT_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
+      if (Date.now() - new Date(storedAt).getTime() > DRAFT_EXPIRY_MS) {
+        setStaleDraftWarning(true);
+      }
     }
   }, []);
 
@@ -443,12 +450,13 @@ export default function TaskPlanner() {
   async function commitPlan() {
     setStatusMessage(null);
     setCommitResults([]);
+    setCommitting(true);
 
     try {
       const res = await fetch("/api/trello/commit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: draftPlan }),
+        body: JSON.stringify({ plan: draftPlan, replace: replaceMode }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -459,6 +467,8 @@ export default function TaskPlanner() {
       setShowCommitSuccessToast(true);
     } catch (err) {
       setStatusMessage(err instanceof Error ? err.message : "Commit failed");
+    } finally {
+      setCommitting(false);
     }
   }
 
@@ -560,6 +570,19 @@ export default function TaskPlanner() {
 
           {activeStep === 2 && (
             <>
+              {staleDraftWarning && (
+                <div className="status" role="alert">
+                  <strong>Heads up:</strong> Your saved draft is over 7 days old and may be stale.{" "}
+                  <button
+                    type="button"
+                    className="ghost"
+                    style={{ display: "inline", padding: "0 4px" }}
+                    onClick={() => setStaleDraftWarning(false)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
               <div className="draft-controls">
             <button className="ghost" onClick={saveDraft} type="button">
               Save draft
@@ -607,6 +630,23 @@ export default function TaskPlanner() {
               </button>
             </div>
             <p className="step2-helper">Lists come from your JSON; each card is created in its list on the board.</p>
+
+            <div className="replace-toggle" style={{ marginTop: "12px" }}>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: "8px", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={replaceMode}
+                  onChange={(e) => setReplaceMode(e.target.checked)}
+                  style={{ marginTop: "3px", flexShrink: 0 }}
+                />
+                <span>
+                  <strong>Replace existing lists</strong>
+                  <span className="helper" style={{ display: "block", marginTop: "2px" }}>
+                    ⚠️ When checked, all existing lists on this board will be archived before your new lists are created. This cannot be undone.
+                  </span>
+                </span>
+              </label>
+            </div>
           </section>
           <div className="step-actions">
             <button className="ghost" type="button" onClick={() => setActiveStep(1)}>
@@ -700,8 +740,8 @@ export default function TaskPlanner() {
                 <button className="ghost" type="button" onClick={() => setActiveStep(3)}>
                   Back
                 </button>
-                <button className="primary" onClick={openCommitModal} disabled={!planReady}>
-                  Commit to Trello
+                <button className="primary" onClick={openCommitModal} disabled={!planReady || committing}>
+                  {committing ? "Committing…" : "Commit to Trello"}
                 </button>
               </div>
               {!planReady && <p className="helper">Add a board, list, and at least one card to enable commit.</p>}
@@ -789,19 +829,25 @@ export default function TaskPlanner() {
               {draftPlan.boardName}
               {draftPlan.items.some((i) => i.listName) ? " in their lists from your JSON." : ` in ${draftPlan.listName || "To Do"}.`}
             </p>
+            {replaceMode && (
+              <p style={{ color: "#c0392b", fontWeight: 600 }}>
+                ⚠️ Replace mode is ON — all existing lists on this board will be archived first.
+              </p>
+            )}
             <p className="muted">This action cannot be undone. Please confirm you want to create these cards.</p>
             <div className="modal-actions">
-              <button className="ghost" onClick={() => setShowCommitModal(false)}>
+              <button className="ghost" onClick={() => setShowCommitModal(false)} disabled={committing}>
                 Cancel
               </button>
               <button
                 className="primary"
+                disabled={committing}
                 onClick={() => {
                   setShowCommitModal(false);
                   commitPlan();
                 }}
               >
-                Confirm &amp; commit
+                {committing ? "Committing…" : "Confirm & commit"}
               </button>
             </div>
           </div>
