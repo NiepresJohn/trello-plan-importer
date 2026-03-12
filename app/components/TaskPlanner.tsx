@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { blankPlan, TaskPlan, PlanItem, validatePlanLenient } from "../lib/plan";
+import { blankPlan, TaskPlan, PlanItem, LabelInput, validatePlanLenient } from "../lib/plan";
 
 type Board = { id: string; name: string };
 
@@ -125,7 +125,9 @@ export default function TaskPlanner() {
     setLoadingMeta(true);
     setStatusMessage(null);
     try {
-      const res = await fetch("/api/trello/meta");
+      const res = await fetch("/api/trello/meta", {
+        headers: { "x-webhook-secret": process.env.NEXT_PUBLIC_WEBHOOK_SECRET || "" },
+      });
       const data = await res.json();
       if (!res.ok || !data.ok) {
         throw new Error(data.error || "Failed to load Trello boards");
@@ -148,7 +150,9 @@ export default function TaskPlanner() {
     try {
       const query = new URLSearchParams({ boardName });
       if (listName && listName.trim()) query.set("listName", listName.trim());
-      const res = await fetch(`/api/trello/meta?${query.toString()}`);
+      const res = await fetch(`/api/trello/meta?${query.toString()}`, {
+        headers: { "x-webhook-secret": process.env.NEXT_PUBLIC_WEBHOOK_SECRET || "" },
+      });
       const data = await res.json();
       if (!res.ok || !data.ok) {
         throw new Error(data.error || "Failed to load Trello lists");
@@ -875,7 +879,7 @@ function LabelEditor({
   onAdd,
   onRemove,
 }: {
-  labels: string[];
+  labels: LabelInput[];
   onAdd: (label: string) => void;
   onRemove: (index: number) => void;
 }) {
@@ -883,14 +887,17 @@ function LabelEditor({
   return (
     <div className="label-editor">
       <div className="chips">
-        {labels.map((label, idx) => (
-          <span key={`${label}-${idx}`}>
-            {label}
-            <button onClick={() => onRemove(idx)} aria-label={`Remove ${label}`}>
-              x
-            </button>
-          </span>
-        ))}
+        {labels.map((label, idx) => {
+          const displayName = typeof label === "string" ? label : label.name;
+          return (
+            <span key={`${displayName}-${idx}`}>
+              {displayName}
+              <button onClick={() => onRemove(idx)} aria-label={`Remove ${displayName}`}>
+                x
+              </button>
+            </span>
+          );
+        })}
       </div>
       <div className="inline-input">
         <input
