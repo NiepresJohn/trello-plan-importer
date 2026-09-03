@@ -19,29 +19,43 @@ function buildTrelloUrl(path: string, params: Record<string, string>) {
   return url;
 }
 
+const TRELLO_TIMEOUT_MS = 30_000;
+
 async function trelloRequest(path: string, options: { method?: string; params?: Record<string, string>; body?: Record<string, string> }) {
   const key = requireEnv("TRELLO_KEY");
   const token = requireEnv("TRELLO_TOKEN");
   const params = { key, token, ...(options.params || {}) };
   const method = options.method || "GET";
   const url = buildTrelloUrl(path, params);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TRELLO_TIMEOUT_MS);
 
-  if (method === "GET") {
-    const res = await fetch(url, { method });
+  try {
+    if (method === "GET") {
+      const res = await fetch(url, { method, signal: controller.signal });
+      const text = await res.text();
+      if (!res.ok) return { ok: false, status: res.status, text } as TrelloResponse<never>;
+      return { ok: true, data: JSON.parse(text) } as TrelloResponse<unknown>;
+    }
+
+    const form = new URLSearchParams(options.body || {});
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: form.toString(),
+      signal: controller.signal,
+    });
     const text = await res.text();
     if (!res.ok) return { ok: false, status: res.status, text } as TrelloResponse<never>;
     return { ok: true, data: JSON.parse(text) } as TrelloResponse<unknown>;
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      return { ok: false, status: 408, text: JSON.stringify({ error: "Request timeout" }) } as TrelloResponse<never>;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const form = new URLSearchParams(options.body || {});
-  const res = await fetch(url, {
-    method,
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: form.toString(),
-  });
-  const text = await res.text();
-  if (!res.ok) return { ok: false, status: res.status, text } as TrelloResponse<never>;
-  return { ok: true, data: JSON.parse(text) } as TrelloResponse<unknown>;
 }
 
 function normalizeName(value: string) {
@@ -176,6 +190,7 @@ export async function resolveOrCreateBoard(boardName: string, boardId?: string):
 export async function resolveOrCreateList(boardId: string, listName: string): Promise<TrelloResponse<TrelloList>> {
   const resolved = await resolveList(boardId, listName);
   if (resolved.ok) return resolved;
+  if (resolved.status !== 404) return resolved;
   const name = listName.trim() || "To Do";
   const created = await createList(boardId, name);
   if (created.ok) return { ok: true, data: created.data };

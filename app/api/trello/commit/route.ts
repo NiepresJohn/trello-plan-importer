@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   const plan = result.data;
   const defaultListName = plan.listName || process.env.DEFAULT_LIST_NAME || "To Do";
 
-  const results = [] as Array<{ ok: boolean; name: string; listName?: string; shortUrl?: string; error?: string }>;
+  const results = [] as Array<{ ok: boolean; name: string; listName?: string; shortUrl?: string; error?: string; warnings?: string[] }>;
 
   const resolvedBoardResult = await resolveOrCreateBoard(plan.boardName, process.env.DEFAULT_BOARD_ID || undefined);
   if (!resolvedBoardResult.ok) {
@@ -57,12 +57,14 @@ export async function POST(request: Request) {
   }
   const resolvedBoard = resolvedBoardResult.data;
 
-  // Fix #4: only archive existing lists when replace is explicitly true
   if (replace) {
     const existingLists = await getLists(resolvedBoard.id);
     if (existingLists.ok && existingLists.data.length > 0) {
       for (const list of existingLists.data) {
-        await archiveList(list.id);
+        const archived = await archiveList(list.id);
+        if (!archived.ok) {
+          console.warn(`[commit] Failed to archive list "${list.name}" (${list.id}): ${archived.text}`);
+        }
       }
     }
   }
@@ -88,82 +90,100 @@ export async function POST(request: Request) {
 
   const allowCreate = String(process.env.ALLOW_LABEL_CREATE || "").toLowerCase() === "true";
 
-  for (const item of plan.items) {
-    const targetListName = (item.listName && item.listName.trim()) || defaultListName;
-    const listId = await getListId(targetListName);
-    if (!listId) {
-      results.push({
-        ok: false,
-        name: item.name,
-        listName: targetListName,
-        error: `Could not resolve or create list: ${targetListName}`,
-      });
-      continue;
-    }
+  const CONCURRENCY = 5;
+  for (let i = 0; i < plan.items.length; i += CONCURRENCY) {
+    const batch = plan.items.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.all(
+      batch.map(async (item) => {
+        const targetListName = (item.listName && item.listName.trim()) || defaultListName;
+        const listId = await getListId(targetListName);
+        if (!listId) {
+          return {
+            ok: false,
+            name: item.name,
+            listName: targetListName,
+            error: `Could not resolve or create list: ${targetListName}`,
+          };
+        }
 
-    try {
-      const cardResp = await createCard({
-        listId,
-        name: item.name,
-        desc: item.desc,
-        due: item.due || undefined,
-      });
-      if (!cardResp.ok) {
-        results.push({
-          ok: false,
-          name: item.name,
-          listName: targetListName,
-          error: "Trello card creation failed",
-        });
-        continue;
-      }
+        try {
+          const cardResp = await createCard({
+            listId,
+            name: item.name,
+            desc: item.desc,
+            due: item.due || undefined,
+          });
+          if (!cardResp.ok) {
+            return {
+              ok: false,
+              name: item.name,
+              listName: targetListName,
+              error: "Trello card creation failed",
+            };
+          }
 
-      // Fix #7: support label color from PlanItem
-      const labels = item.labels || [];
-      if (labels.length > 0) {
-        for (const label of labels) {
-          const labelName = typeof label === "string" ? label : label.name;
-          const labelColor = typeof label === "string" ? undefined : label.color;
-          const existing = labelsResp.data.find(
-            (l) => l.name && l.name.toLowerCase() === labelName.trim().toLowerCase()
-          );
-          let labelId = existing ? existing.id : null;
-          if (!labelId && allowCreate) {
-            const created = await createLabel(resolvedBoard.id, labelName, labelColor);
-            if (created.ok) {
-              labelId = created.data.id;
+          const warnings: string[] = [];
+          const labels = item.labels || [];
+          if (labels.length > 0) {
+            for (const label of labels) {
+              const labelName = typeof label === "string" ? label : label.name;
+              const labelColor = typeof label === "string" ? undefined : label.color;
+              const existing = labelsResp.data.find(
+                (l) => l.name && l.name.toLowerCase() === labelName.trim().toLowerCase()
+              );
+              let labelId = existing ? existing.id : null;
+              if (!labelId && allowCreate) {
+                const created = await createLabel(resolvedBoard.id, labelName, labelColor);
+                if (created.ok) {
+                  labelId = created.data.id;
+                  labelsResp.data.push(created.data);
+                }
+              }
+              if (labelId) {
+                const added = await addLabelToCard(cardResp.data.id, labelId);
+                if (!added.ok) {
+                  warnings.push(`Failed to add label "${labelName}"`);
+                }
+              } else {
+                warnings.push(`Label "${labelName}" not found and creation disabled`);
+              }
             }
           }
-          if (labelId) {
-            await addLabelToCard(cardResp.data.id, labelId);
-          }
-        }
-      }
 
-      const checklist = item.checklist || [];
-      if (checklist.length > 0) {
-        const checklistResp = await createChecklist(cardResp.data.id);
-        if (checklistResp.ok) {
-          for (const entry of checklist) {
-            await addChecklistItem(checklistResp.data.id, entry);
+          const checklist = item.checklist || [];
+          if (checklist.length > 0) {
+            const checklistResp = await createChecklist(cardResp.data.id);
+            if (checklistResp.ok) {
+              for (const entry of checklist) {
+                const added = await addChecklistItem(checklistResp.data.id, entry);
+                if (!added.ok) {
+                  warnings.push(`Failed to add checklist item "${entry}"`);
+                }
+              }
+            } else {
+              warnings.push("Failed to create checklist");
+            }
           }
-        }
-      }
 
-      results.push({
-        ok: true,
-        name: item.name,
-        listName: targetListName,
-        shortUrl: cardResp.data.shortUrl,
-      });
-    } catch (err) {
-      results.push({
-        ok: false,
-        name: item.name,
-        listName: targetListName,
-        error: err instanceof Error ? err.message : "Network error",
-      });
-    }
+          return {
+            ok: true,
+            name: item.name,
+            listName: targetListName,
+            shortUrl: cardResp.data.shortUrl,
+            ...(warnings.length > 0 ? { warnings } : {}),
+          };
+        } catch (err) {
+          console.error(`[commit] Failed to create card "${item.name}":`, err);
+          return {
+            ok: false,
+            name: item.name,
+            listName: targetListName,
+            error: "Failed to create card. Please try again.",
+          };
+        }
+      })
+    );
+    results.push(...batchResults);
   }
 
   return NextResponse.json({ ok: true, results });

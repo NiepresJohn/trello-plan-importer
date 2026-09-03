@@ -108,9 +108,21 @@ export interface LLMResponse {
   error?: string;
 }
 
+const LLM_TIMEOUT_MS = 60_000;
+
+function parseJsonSafe(text: string): { ok: true; data: unknown } | { ok: false; error: string } {
+  try {
+    return { ok: true, data: JSON.parse(text) };
+  } catch {
+    return { ok: false, error: "Failed to parse response as JSON" };
+  }
+}
+
 export async function generatePlan(request: LLMRequest): Promise<LLMResponse> {
   const config = PROVIDER_CONFIGS[request.provider];
   const model = request.model || config.defaultModel;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
 
   try {
     let response: Response;
@@ -126,6 +138,7 @@ export async function generatePlan(request: LLMRequest): Promise<LLMResponse> {
           Authorization: `Bearer ${request.apiKey}`,
         },
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -138,7 +151,9 @@ export async function generatePlan(request: LLMRequest): Promise<LLMResponse> {
       if (!content) {
         return { ok: false, error: "No content in OpenAI response" };
       }
-      plan = JSON.parse(content);
+      const parsed = parseJsonSafe(content);
+      if (!parsed.ok) return { ok: false, error: "Failed to parse OpenAI response as JSON" };
+      plan = parsed.data;
     } else if (request.provider === "anthropic") {
       response = await fetch(config.baseUrl, {
         method: "POST",
@@ -148,6 +163,7 @@ export async function generatePlan(request: LLMRequest): Promise<LLMResponse> {
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify(buildAnthropicPrompt(request.description, model)),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -160,13 +176,19 @@ export async function generatePlan(request: LLMRequest): Promise<LLMResponse> {
       if (!content) {
         return { ok: false, error: "No content in Anthropic response" };
       }
-      plan = JSON.parse(content);
+      const parsed = parseJsonSafe(content);
+      if (!parsed.ok) return { ok: false, error: "Failed to parse Anthropic response as JSON" };
+      plan = parsed.data;
     } else if (request.provider === "google") {
-      const url = `${config.baseUrl}/${model}:generateContent?key=${request.apiKey}`;
+      const url = `${config.baseUrl}/${model}:generateContent`;
       response = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": request.apiKey,
+        },
         body: JSON.stringify(buildGooglePrompt(request.description)),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -180,17 +202,22 @@ export async function generatePlan(request: LLMRequest): Promise<LLMResponse> {
         return { ok: false, error: "No content in Google response" };
       }
       const cleaned = content.replace(/```json\n?|\n?```/g, "").trim();
-      plan = JSON.parse(cleaned);
+      const parsed = parseJsonSafe(cleaned);
+      if (!parsed.ok) return { ok: false, error: "Failed to parse Google response as JSON" };
+      plan = parsed.data;
     } else {
       return { ok: false, error: "Unknown provider" };
     }
 
     return { ok: true, plan };
   } catch (err) {
-    if (err instanceof SyntaxError) {
-      return { ok: false, error: "Failed to parse LLM response as JSON. Please try again." };
+    if (err instanceof Error && err.name === "AbortError") {
+      return { ok: false, error: "Request timed out. Please try again." };
     }
-    return { ok: false, error: err instanceof Error ? err.message : "Unknown error occurred" };
+    console.error(`[llm] Unexpected error for ${request.provider}:`, err);
+    return { ok: false, error: "An unexpected error occurred. Please try again." };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

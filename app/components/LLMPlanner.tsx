@@ -11,7 +11,7 @@ type SavedTokens = Record<Provider, { apiKey: string; model: string } | null>;
 function loadSavedTokens(): SavedTokens {
   if (typeof window === "undefined") return { openai: null, anthropic: null, google: null };
   try {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
+    const stored = window.sessionStorage.getItem(STORAGE_KEY);
     if (stored) return JSON.parse(stored);
   } catch {
     // ignore parse errors
@@ -21,7 +21,7 @@ function loadSavedTokens(): SavedTokens {
 
 function saveTokens(tokens: SavedTokens) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(tokens));
+  window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(tokens));
 }
 
 export interface LLMPlannerProps {
@@ -109,7 +109,7 @@ export default function LLMPlanner({ onPlanGenerated }: LLMPlannerProps) {
 
   function handleClearTokens() {
     if (typeof window === "undefined") return;
-    window.localStorage.removeItem(STORAGE_KEY);
+    window.sessionStorage.removeItem(STORAGE_KEY);
     setApiKey("");
     setModel(PROVIDER_CONFIGS[provider].defaultModel);
     setHasSavedToken(false);
@@ -205,7 +205,7 @@ export default function LLMPlanner({ onPlanGenerated }: LLMPlannerProps) {
       <div className="llm-info">
         <p className="helper">
           Your API key is sent securely to our server to make the request. It&apos;s never stored on our servers.
-          {saveToBrowser && " It will be saved in your local browser storage for convenience."}
+          {saveToBrowser && " It will be saved in your browser session storage (cleared when you close the tab)."}
         </p>
       </div>
     </div>

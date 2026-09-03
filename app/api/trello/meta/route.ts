@@ -63,8 +63,9 @@ export async function GET(request: Request) {
       resolvedBoard,
     });
   } catch (err) {
+    console.error("[meta] Unexpected error:", err);
     return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : "Failed to reach Trello API" },
+      { ok: false, error: "Failed to reach Trello API" },
       { status: 502 }
     );
   }

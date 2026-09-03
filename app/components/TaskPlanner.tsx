@@ -1,20 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { blankPlan, TaskPlan, PlanItem, LabelInput, validatePlanLenient } from "../lib/plan";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { TaskPlan, PlanItem, validatePlanLenient } from "../lib/plan";
 import LLMPlanner from "./LLMPlanner";
-
-type Board = { id: string; name: string };
-
-type List = { id: string; name: string };
-
-type CommitResult = {
-  ok: boolean;
-  name: string;
-  listName?: string;
-  shortUrl?: string;
-  error?: string;
-};
+import { Stepper } from "./Stepper";
+import { LabelEditor } from "./LabelEditor";
+import { ChecklistEditor } from "./ChecklistEditor";
+import { useDraftPlan } from "../hooks/useDraftPlan";
+import { useTrelloMeta } from "../hooks/useTrelloMeta";
+import { useCommit } from "../hooks/useCommit";
 
 function toLocalDateTime(iso: string | null): string {
   if (!iso) return "";
@@ -33,82 +27,36 @@ function fromLocalDateTime(value: string): string | null {
   return date.toISOString();
 }
 
-export function Stepper({
-  activeStep,
-  canStep2,
-  canStep3,
-  canStep4,
-  onStep,
-  compact = false,
-}: {
-  activeStep: 1 | 2 | 3 | 4;
-  canStep2: boolean;
-  canStep3: boolean;
-  canStep4: boolean;
-  onStep: (step: 1 | 2 | 3 | 4) => void;
-  compact?: boolean;
-}) {
-  return (
-    <div className={`stepper ${compact ? "compact" : ""}`} role="tablist" aria-label="Setup steps">
-      <button
-        type="button"
-        className={`step ${activeStep > 1 ? "done" : ""} ${activeStep === 1 ? "active" : ""}`}
-        onClick={() => onStep(1)}
-        aria-current={activeStep === 1 ? "step" : undefined}
-      >
-        <span className="step-dot">1</span>
-        <span className="step-label">Import JSON</span>
-      </button>
-      <button
-        type="button"
-        className={`step ${activeStep > 2 ? "done" : ""} ${activeStep === 2 ? "active" : ""}`}
-        onClick={() => onStep(2)}
-        disabled={!canStep2}
-        aria-current={activeStep === 2 ? "step" : undefined}
-      >
-        <span className="step-dot">2</span>
-        <span className="step-label">Board &amp; List</span>
-      </button>
-      <button
-        type="button"
-        className={`step ${activeStep > 3 ? "done" : ""} ${activeStep === 3 ? "active" : ""}`}
-        onClick={() => onStep(3)}
-        disabled={!canStep3}
-        aria-current={activeStep === 3 ? "step" : undefined}
-      >
-        <span className="step-dot">3</span>
-        <span className="step-label">Review Cards</span>
-      </button>
-      <button
-        type="button"
-        className={`step ${activeStep > 4 ? "done" : ""} ${activeStep === 4 ? "active" : ""}`}
-        onClick={() => onStep(4)}
-        disabled={!canStep4}
-        aria-current={activeStep === 4 ? "step" : undefined}
-      >
-        <span className="step-dot">4</span>
-        <span className="step-label">Commit</span>
-      </button>
-    </div>
-  );
+function isPlanLike(value: unknown): value is TaskPlan {
+  if (!value || typeof value !== "object") return false;
+  const plan = value as Record<string, unknown>;
+  if (typeof plan.boardName !== "string" || typeof plan.listName !== "string") return false;
+  if (!Array.isArray(plan.items)) return false;
+  return true;
 }
 
 export default function TaskPlanner() {
-  const [draftPlan, setDraftPlan] = useState<TaskPlan>(blankPlan());
+  const {
+    draftPlan,
+    setDraftPlan,
+    savedDraftAt,
+    hasSavedDraft,
+    staleDraftWarning,
+    saveDraft,
+    restoreDraft,
+    resetDraft,
+    dismissStaleWarning,
+  } = useDraftPlan();
+
+  const { boards, loadingMeta, loadBoards, loadLists } = useTrelloMeta();
+  const { committing, results: commitResults, error: commitError, commit } = useCommit();
+
   const [importText, setImportText] = useState("");
-  const [boards, setBoards] = useState<Board[]>([]);
-  const [lists, setLists] = useState<List[]>([]);
-  const [loadingMeta, setLoadingMeta] = useState(false);
-  const [committing, setCommitting] = useState(false);
   const [replaceMode, setReplaceMode] = useState(false);
-  const [commitResults, setCommitResults] = useState<CommitResult[]>([]);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState<1 | 2 | 3 | 4>(1);
   const [showCommitModal, setShowCommitModal] = useState(false);
   const [showCommitSuccessToast, setShowCommitSuccessToast] = useState(false);
-  const [savedDraftAt, setSavedDraftAt] = useState<string | null>(null);
-  const [hasSavedDraft, setHasSavedDraft] = useState(false);
-  const [staleDraftWarning, setStaleDraftWarning] = useState(false);
   const [importResult, setImportResult] = useState<
     { ok: true; itemCount: number; boardName: string; listName: string } | { ok: false; error: string } | null
   >(null);
@@ -123,70 +71,9 @@ export default function TaskPlanner() {
     [boards, draftPlan.boardName]
   );
 
-  async function loadBoards() {
-    setLoadingMeta(true);
-    setStatusMessage(null);
-    try {
-      const res = await fetch("/api/trello/meta", {
-        headers: { "x-webhook-secret": process.env.NEXT_PUBLIC_WEBHOOK_SECRET || "" },
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Failed to load Trello boards");
-      }
-      setBoards(data.boards || []);
-    } catch (err) {
-      setStatusMessage(err instanceof Error ? err.message : "Failed to load Trello metadata");
-    } finally {
-      setLoadingMeta(false);
-    }
-  }
-
-  async function loadLists(boardName: string, listName?: string) {
-    if (!boardName) {
-      setLists([]);
-      return;
-    }
-    setLoadingMeta(true);
-    setStatusMessage(null);
-    try {
-      const query = new URLSearchParams({ boardName });
-      if (listName && listName.trim()) query.set("listName", listName.trim());
-      const res = await fetch(`/api/trello/meta?${query.toString()}`, {
-        headers: { "x-webhook-secret": process.env.NEXT_PUBLIC_WEBHOOK_SECRET || "" },
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Failed to load Trello lists");
-      }
-      setLists(data.lists || []);
-    } catch (err) {
-      setStatusMessage(err instanceof Error ? err.message : "Failed to load Trello metadata");
-    } finally {
-      setLoadingMeta(false);
-    }
-  }
-
   useEffect(() => {
     loadBoards();
-  }, []);
-
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem("aitrello_draft_plan");
-    const storedAt = window.localStorage.getItem("aitrello_draft_saved_at");
-    if (stored) {
-      setHasSavedDraft(true);
-    }
-    if (storedAt) {
-      setSavedDraftAt(storedAt);
-      const DRAFT_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
-      if (Date.now() - new Date(storedAt).getTime() > DRAFT_EXPIRY_MS) {
-        setStaleDraftWarning(true);
-      }
-    }
-  }, []);
+  }, [loadBoards]);
 
   useEffect(() => {
     if (!showCommitSuccessToast) return;
@@ -194,50 +81,87 @@ export default function TaskPlanner() {
     return () => clearTimeout(t);
   }, [showCommitSuccessToast]);
 
-  function isPlanLike(value: unknown): value is TaskPlan {
-    if (!value || typeof value !== "object") return false;
-    const plan = value as Record<string, unknown>;
-    if (typeof plan.boardName !== "string" || typeof plan.listName !== "string") return false;
-    if (!Array.isArray(plan.items)) return false;
-    return true;
-  }
-
-  function saveDraft() {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem("aitrello_draft_plan", JSON.stringify(draftPlan));
-    const now = new Date().toISOString();
-    window.localStorage.setItem("aitrello_draft_saved_at", now);
-    setSavedDraftAt(now);
-    setHasSavedDraft(true);
+  const handleSaveDraft = useCallback(() => {
+    saveDraft(draftPlan);
     setStatusMessage("Draft saved locally.");
-  }
+  }, [saveDraft, draftPlan]);
 
-  function restoreDraft() {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem("aitrello_draft_plan");
-    if (!stored) {
+  const handleRestoreDraft = useCallback(() => {
+    const restored = restoreDraft();
+    if (!restored) {
       setStatusMessage("No saved draft found.");
       return;
     }
-    try {
-      const parsed = JSON.parse(stored);
-      if (!isPlanLike(parsed)) {
-        throw new Error("Saved draft is invalid.");
-      }
-      setDraftPlan(parsed);
-      setStatusMessage("Saved draft restored.");
-    } catch (err) {
-      setStatusMessage(err instanceof Error ? err.message : "Saved draft could not be restored.");
+    if (!isPlanLike(restored)) {
+      setStatusMessage("Saved draft is invalid.");
+      return;
     }
-  }
+    setDraftPlan(restored);
+    setStatusMessage("Saved draft restored.");
+  }, [restoreDraft, setDraftPlan]);
 
-  function resetDraft() {
-    setDraftPlan(blankPlan());
-    setCommitResults([]);
+  const handleResetDraft = useCallback(() => {
+    resetDraft();
     setStatusMessage("Draft reset. Nothing has been sent to Trello.");
-  }
+  }, [resetDraft]);
 
-  function loadFromJson() {
+  const updateItem = useCallback((index: number, patch: Partial<PlanItem>) => {
+    setDraftPlan((prev) => {
+      const items = prev.items.map((item, idx) => (idx === index ? { ...item, ...patch } : item));
+      return { ...prev, items };
+    });
+  }, [setDraftPlan]);
+
+  const addItem = useCallback(() => {
+    setDraftPlan((prev) => ({
+      ...prev,
+      items: [...prev.items, { name: "", desc: "", due: null, labels: [], checklist: [] }],
+    }));
+  }, [setDraftPlan]);
+
+  const removeItem = useCallback((index: number) => {
+    setDraftPlan((prev) => ({ ...prev, items: prev.items.filter((_, idx) => idx !== index) }));
+  }, [setDraftPlan]);
+
+  const addLabel = useCallback((index: number, label: string) => {
+    if (!label.trim()) return;
+    setDraftPlan((prev) => {
+      const items = prev.items.map((item, idx) =>
+        idx === index ? { ...item, labels: [...item.labels, label.trim()] } : item
+      );
+      return { ...prev, items };
+    });
+  }, [setDraftPlan]);
+
+  const removeLabel = useCallback((index: number, labelIndex: number) => {
+    setDraftPlan((prev) => {
+      const items = prev.items.map((item, idx) =>
+        idx === index ? { ...item, labels: item.labels.filter((_, i) => i !== labelIndex) } : item
+      );
+      return { ...prev, items };
+    });
+  }, [setDraftPlan]);
+
+  const addChecklistItem = useCallback((index: number, text: string) => {
+    if (!text.trim()) return;
+    setDraftPlan((prev) => {
+      const items = prev.items.map((item, idx) =>
+        idx === index ? { ...item, checklist: [...item.checklist, text.trim()] } : item
+      );
+      return { ...prev, items };
+    });
+  }, [setDraftPlan]);
+
+  const removeChecklistItem = useCallback((index: number, itemIndex: number) => {
+    setDraftPlan((prev) => {
+      const items = prev.items.map((item, idx) =>
+        idx === index ? { ...item, checklist: item.checklist.filter((_, i) => i !== itemIndex) } : item
+      );
+      return { ...prev, items };
+    });
+  }, [setDraftPlan]);
+
+  const loadFromJson = useCallback(() => {
     if (!importText.trim()) {
       setStatusMessage("Paste a JSON plan before importing.");
       return;
@@ -282,14 +206,7 @@ export default function TaskPlanner() {
             for (const card of cards) {
               if (!card) continue;
               if (typeof card === "string") {
-                items.push({
-                  name: card.trim() || "Untitled",
-                  desc: "",
-                  due: null,
-                  labels: [],
-                  checklist: [],
-                  listName: listNameForItems,
-                });
+                items.push({ name: card.trim() || "Untitled", desc: "", due: null, labels: [], checklist: [], listName: listNameForItems });
                 continue;
               }
               if (typeof card !== "object") continue;
@@ -300,11 +217,9 @@ export default function TaskPlanner() {
                 (typeof cardObj.cardName === "string" ? cardObj.cardName : "").trim() ||
                 "Untitled";
               const desc =
-                typeof cardObj.description === "string"
-                  ? cardObj.description
-                  : typeof cardObj.desc === "string"
-                    ? cardObj.desc
-                    : "";
+                typeof cardObj.description === "string" ? cardObj.description
+                : typeof cardObj.desc === "string" ? cardObj.desc
+                : "";
               const labelIds = Array.isArray(cardObj.labelIds) ? cardObj.labelIds : [];
               const labelsAsStrings = Array.isArray(cardObj.labels)
                 ? (cardObj.labels as unknown[]).filter((x) => typeof x === "string").map((x) => String(x).trim()).filter(Boolean)
@@ -313,14 +228,7 @@ export default function TaskPlanner() {
                 labelsAsStrings.length > 0
                   ? labelsAsStrings
                   : labelIds.map((id) => labelMap.get(id != null ? String(id) : "")).filter((value): value is string => Boolean(value));
-              items.push({
-                name,
-                desc,
-                due: null,
-                labels: labelsResolved,
-                checklist: [],
-                listName: listNameForItems,
-              });
+              items.push({ name, desc, due: null, labels: labelsResolved, checklist: [], listName: listNameForItems });
             }
           }
           normalized = {
@@ -337,22 +245,16 @@ export default function TaskPlanner() {
           items: normalized.items.map((it: Record<string, unknown>) => {
             const item = it ?? {};
             const rawName =
-              typeof item.name === "string"
-                ? (item.name as string).trim()
-                : typeof item.title === "string"
-                  ? (item.title as string).trim()
-                  : typeof item.cardName === "string"
-                    ? (item.cardName as string).trim()
-                    : typeof it === "string"
-                      ? String(it).trim()
-                      : "";
+              typeof item.name === "string" ? (item.name as string).trim()
+              : typeof item.title === "string" ? (item.title as string).trim()
+              : typeof item.cardName === "string" ? (item.cardName as string).trim()
+              : typeof it === "string" ? String(it).trim()
+              : "";
             const name = rawName || "Untitled";
             const desc =
-              typeof item.desc === "string"
-                ? item.desc
-                : typeof item.description === "string"
-                  ? item.description
-                  : "";
+              typeof item.desc === "string" ? item.desc
+              : typeof item.description === "string" ? item.description
+              : "";
             return {
               name,
               desc,
@@ -367,22 +269,18 @@ export default function TaskPlanner() {
 
       const validation = validatePlanLenient(normalized);
       if (!validation.ok) {
-        const msg = validation.error ?? "Invalid plan JSON. Expect { items: [{ name, desc, labels, checklist, due }] }.";
+        const msg = validation.error ?? "Invalid plan JSON.";
         setStatusMessage(msg);
         setImportResult({ ok: false, error: msg });
         return;
       }
       if (validation.data.items.length === 0) {
-        const msg =
-          "No cards were found. Your JSON structure may not match. " +
-          "Expected: a board with lists (each list with cards/items/tasks), or a top-level items array " +
-          "where each item has name or title.";
+        const msg = "No cards were found. Your JSON structure may not match.";
         setStatusMessage(msg);
         setImportResult({ ok: false, error: msg });
         return;
       }
       setDraftPlan(validation.data);
-      setCommitResults([]);
       setStatusMessage("Draft loaded from JSON.");
       setImportResult({
         ok: true,
@@ -395,11 +293,10 @@ export default function TaskPlanner() {
       setStatusMessage(msg);
       setImportResult({ ok: false, error: msg });
     }
-  }
+  }, [importText, setDraftPlan]);
 
-  function handleLLMPlanGenerated(plan: TaskPlan) {
+  const handleLLMPlanGenerated = useCallback((plan: TaskPlan) => {
     setDraftPlan(plan);
-    setCommitResults([]);
     setImportResult({
       ok: true,
       itemCount: plan.items.length,
@@ -407,93 +304,26 @@ export default function TaskPlanner() {
       listName: plan.listName,
     });
     setStatusMessage("AI plan generated successfully. You can proceed to review.");
-  }
+  }, [setDraftPlan]);
 
-  function updatePlanField(field: "boardName" | "listName", value: string) {
+  const updatePlanField = useCallback((field: "boardName" | "listName", value: string) => {
     setDraftPlan((prev) => ({ ...prev, [field]: value }));
-  }
-
-  function updateItem(index: number, patch: Partial<PlanItem>) {
-    setDraftPlan((prev) => {
-      const items = prev.items.map((item, idx) => (idx === index ? { ...item, ...patch } : item));
-      return { ...prev, items };
-    });
-  }
-
-  function addItem() {
-    setDraftPlan((prev) => ({
-      ...prev,
-      items: [
-        ...prev.items,
-        {
-          name: "",
-          desc: "",
-          due: null,
-          labels: [],
-          checklist: [],
-        },
-      ],
-    }));
-  }
-
-  function removeItem(index: number) {
-    setDraftPlan((prev) => {
-      const items = prev.items.filter((_, idx) => idx !== index);
-      return { ...prev, items };
-    });
-  }
-
-  function addLabel(index: number, label: string) {
-    if (!label.trim()) return;
-    updateItem(index, { labels: [...draftPlan.items[index].labels, label.trim()] });
-  }
-
-  function removeLabel(index: number, labelIndex: number) {
-    const labels = draftPlan.items[index].labels.filter((_, idx) => idx !== labelIndex);
-    updateItem(index, { labels });
-  }
-
-  function addChecklistItem(index: number, text: string) {
-    if (!text.trim()) return;
-    updateItem(index, { checklist: [...draftPlan.items[index].checklist, text.trim()] });
-  }
-
-  function removeChecklistItem(index: number, itemIndex: number) {
-    const checklist = draftPlan.items[index].checklist.filter((_, idx) => idx !== itemIndex);
-    updateItem(index, { checklist });
-  }
+  }, [setDraftPlan]);
 
   const COMMIT_SUCCESS_MSG = "Commit successful. Please check your newly created Trello board.";
 
-  async function commitPlan() {
-    setStatusMessage(null);
-    setCommitResults([]);
-    setCommitting(true);
-
-    try {
-      const res = await fetch("/api/trello/commit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: draftPlan, replace: replaceMode }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Commit failed");
-      }
-      setCommitResults(data.results || []);
+  const handleCommit = useCallback(async () => {
+    const success = await commit(draftPlan, replaceMode);
+    if (success) {
       setStatusMessage(COMMIT_SUCCESS_MSG);
       setShowCommitSuccessToast(true);
-    } catch (err) {
-      setStatusMessage(err instanceof Error ? err.message : "Commit failed");
-    } finally {
-      setCommitting(false);
     }
-  }
+  }, [commit, draftPlan, replaceMode]);
 
-  function openCommitModal() {
+  const openCommitModal = useCallback(() => {
     if (!planReady) return;
     setShowCommitModal(true);
-  }
+  }, [planReady]);
 
   return (
     <section className="workspace">
@@ -625,91 +455,91 @@ export default function TaskPlanner() {
                     type="button"
                     className="ghost"
                     style={{ display: "inline", padding: "0 4px" }}
-                    onClick={() => setStaleDraftWarning(false)}
+                    onClick={dismissStaleWarning}
                   >
                     Dismiss
                   </button>
                 </div>
               )}
               <div className="draft-controls">
-            <button className="ghost" onClick={saveDraft} type="button">
-              Save draft
-            </button>
-            <button className="ghost" onClick={restoreDraft} type="button" disabled={!hasSavedDraft}>
-              Restore saved
-            </button>
-            <button className="ghost" onClick={resetDraft} type="button">
-              Reset draft
-            </button>
-            {savedDraftAt && (
-              <span className="helper">Last saved: {new Date(savedDraftAt).toLocaleString()}</span>
-            )}
+                <button className="ghost" onClick={handleSaveDraft} type="button">
+                  Save draft
+                </button>
+                <button className="ghost" onClick={handleRestoreDraft} type="button" disabled={!hasSavedDraft}>
+                  Restore saved
+                </button>
+                <button className="ghost" onClick={handleResetDraft} type="button">
+                  Reset draft
+                </button>
+                {savedDraftAt && (
+                  <span className="helper">Last saved: {new Date(savedDraftAt).toLocaleString()}</span>
+                )}
               </div>
 
-          <section className="step2-board-section" aria-labelledby="step2-board-label">
-            <h3 id="step2-board-label" className="step2-board-label">Board</h3>
-            <div className="board-select-row">
-              <div className="dropdown-wrap board-dropdown">
-                <select
-                  id="board-select"
-                  className="dropdown-select"
-                  value={draftPlan.boardName}
-                  onChange={(event) => updatePlanField("boardName", event.target.value)}
+              <section className="step2-board-section" aria-labelledby="step2-board-label">
+                <h3 id="step2-board-label" className="step2-board-label">Board</h3>
+                <div className="board-select-row">
+                  <div className="dropdown-wrap board-dropdown">
+                    <select
+                      id="board-select"
+                      className="dropdown-select"
+                      value={draftPlan.boardName}
+                      onChange={(event) => updatePlanField("boardName", event.target.value)}
+                    >
+                      <option value="">Select a board</option>
+                      {boards.map((board) => (
+                        <option key={board.id} value={board.name}>
+                          {board.name}
+                        </option>
+                      ))}
+                      {draftPlan.boardName &&
+                        !boards.some((b) => b.name === draftPlan.boardName) && (
+                          <option value={draftPlan.boardName}>{draftPlan.boardName}</option>
+                        )}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    className="board-refresh-btn"
+                    onClick={loadBoards}
+                    disabled={loadingMeta}
+                  >
+                    {loadingMeta ? "Refreshing…" : "Refresh Trello metadata"}
+                  </button>
+                </div>
+                <p className="step2-helper">Lists come from your JSON; each card is created in its list on the board.</p>
+
+                <div className="replace-toggle" style={{ marginTop: "12px" }}>
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: "8px", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={replaceMode}
+                      onChange={(e) => setReplaceMode(e.target.checked)}
+                      style={{ marginTop: "3px", flexShrink: 0 }}
+                    />
+                    <span>
+                      <strong>Replace existing lists</strong>
+                      <span className="helper" style={{ display: "block", marginTop: "2px" }}>
+                        ⚠️ When checked, all existing lists on this board will be archived before your new lists are created. This cannot be undone.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              </section>
+              <div className="step-actions">
+                <button className="ghost" type="button" onClick={() => setActiveStep(1)}>
+                  Back
+                </button>
+                <button
+                  className="primary"
+                  type="button"
+                  onClick={() => setActiveStep(3)}
+                  disabled={!hasBoard}
                 >
-                  <option value="">Select a board</option>
-                  {boards.map((board) => (
-                    <option key={board.id} value={board.name}>
-                      {board.name}
-                    </option>
-                  ))}
-                  {draftPlan.boardName &&
-                    !boards.some((b) => b.name === draftPlan.boardName) && (
-                      <option value={draftPlan.boardName}>{draftPlan.boardName}</option>
-                    )}
-                </select>
+                  Next: Review Cards
+                </button>
               </div>
-              <button
-                type="button"
-                className="board-refresh-btn"
-                onClick={loadBoards}
-                disabled={loadingMeta}
-              >
-                {loadingMeta ? "Refreshing…" : "Refresh Trello metadata"}
-              </button>
-            </div>
-            <p className="step2-helper">Lists come from your JSON; each card is created in its list on the board.</p>
-
-            <div className="replace-toggle" style={{ marginTop: "12px" }}>
-              <label style={{ display: "flex", alignItems: "flex-start", gap: "8px", cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={replaceMode}
-                  onChange={(e) => setReplaceMode(e.target.checked)}
-                  style={{ marginTop: "3px", flexShrink: 0 }}
-                />
-                <span>
-                  <strong>Replace existing lists</strong>
-                  <span className="helper" style={{ display: "block", marginTop: "2px" }}>
-                    ⚠️ When checked, all existing lists on this board will be archived before your new lists are created. This cannot be undone.
-                  </span>
-                </span>
-              </label>
-            </div>
-          </section>
-          <div className="step-actions">
-            <button className="ghost" type="button" onClick={() => setActiveStep(1)}>
-              Back
-            </button>
-            <button
-              className="primary"
-              type="button"
-              onClick={() => setActiveStep(3)}
-              disabled={!hasBoard}
-            >
-              Next: Review Cards
-            </button>
-          </div>
-          {!hasBoard && <p className="helper">Select a board to continue.</p>}
+              {!hasBoard && <p className="helper">Select a board to continue.</p>}
             </>
           )}
 
@@ -868,6 +698,7 @@ export default function TaskPlanner() {
           </div>
         )}
       </div>
+
       {showCommitModal && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal">
@@ -892,7 +723,7 @@ export default function TaskPlanner() {
                 disabled={committing}
                 onClick={() => {
                   setShowCommitModal(false);
-                  commitPlan();
+                  handleCommit();
                 }}
               >
                 {committing ? "Committing…" : "Confirm & commit"}
@@ -901,6 +732,7 @@ export default function TaskPlanner() {
           </div>
         </div>
       )}
+
       {showCommitSuccessToast && (
         <div className="commit-success-toast" role="status" aria-live="polite">
           <p className="commit-success-toast__message">{COMMIT_SUCCESS_MSG}</p>
@@ -915,94 +747,5 @@ export default function TaskPlanner() {
         </div>
       )}
     </section>
-  );
-}
-
-function LabelEditor({
-  labels,
-  onAdd,
-  onRemove,
-}: {
-  labels: LabelInput[];
-  onAdd: (label: string) => void;
-  onRemove: (index: number) => void;
-}) {
-  const [value, setValue] = useState("");
-  return (
-    <div className="label-editor">
-      <div className="chips">
-        {labels.map((label, idx) => {
-          const displayName = typeof label === "string" ? label : label.name;
-          return (
-            <span key={`${displayName}-${idx}`}>
-              {displayName}
-              <button onClick={() => onRemove(idx)} aria-label={`Remove ${displayName}`}>
-                x
-              </button>
-            </span>
-          );
-        })}
-      </div>
-      <div className="inline-input">
-        <input
-          type="text"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          placeholder="Add label"
-        />
-        <button
-          type="button"
-          onClick={() => {
-            onAdd(value);
-            setValue("");
-          }}
-        >
-          Add
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ChecklistEditor({
-  items,
-  onAdd,
-  onRemove,
-}: {
-  items: string[];
-  onAdd: (text: string) => void;
-  onRemove: (index: number) => void;
-}) {
-  const [value, setValue] = useState("");
-  return (
-    <div className="checklist">
-      <ul>
-        {items.map((item, idx) => (
-          <li key={`${item}-${idx}`}>
-            <span>{item}</span>
-            <button onClick={() => onRemove(idx)} aria-label={`Remove ${item}`}>
-              Remove
-            </button>
-          </li>
-        ))}
-      </ul>
-      <div className="inline-input">
-        <input
-          type="text"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          placeholder="Add checklist item"
-        />
-        <button
-          type="button"
-          onClick={() => {
-            onAdd(value);
-            setValue("");
-          }}
-        >
-          Add
-        </button>
-      </div>
-    </div>
   );
 }
