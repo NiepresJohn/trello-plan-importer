@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { blankPlan, TaskPlan, PlanItem, LabelInput, validatePlanLenient } from "../lib/plan";
+import LLMPlanner from "./LLMPlanner";
 
 type Board = { id: string; name: string };
 
@@ -111,6 +112,7 @@ export default function TaskPlanner() {
   const [importResult, setImportResult] = useState<
     { ok: true; itemCount: number; boardName: string; listName: string } | { ok: false; error: string } | null
   >(null);
+  const [importMode, setImportMode] = useState<"json" | "ai">("ai");
 
   const hasBoard = draftPlan.boardName.trim().length > 0;
   const hasItems = draftPlan.items.some((item) => item.name.trim().length > 0);
@@ -395,6 +397,18 @@ export default function TaskPlanner() {
     }
   }
 
+  function handleLLMPlanGenerated(plan: TaskPlan) {
+    setDraftPlan(plan);
+    setCommitResults([]);
+    setImportResult({
+      ok: true,
+      itemCount: plan.items.length,
+      boardName: plan.boardName,
+      listName: plan.listName,
+    });
+    setStatusMessage("AI plan generated successfully. You can proceed to review.");
+  }
+
   function updatePlanField(field: "boardName" | "listName", value: string) {
     setDraftPlan((prev) => ({ ...prev, [field]: value }));
   }
@@ -499,77 +513,107 @@ export default function TaskPlanner() {
         <div className="draft-section">
           {activeStep === 1 && (
             <div className="import-panel">
-            <label>Import JSON plan</label>
-            <textarea
-              value={importText}
-              onChange={(event) => {
-                setImportText(event.target.value);
-                setImportResult(null);
-              }}
-              placeholder="Paste plan JSON here..."
-              rows={6}
-            />
-            <div className="editor-actions">
-              <button className="ghost" onClick={loadFromJson} type="button">
-                Load JSON plan
-              </button>
-              <button
-                className="ghost"
-                onClick={() => {
-                  setImportText("");
-                  setImportResult(null);
-                }}
-                type="button"
-              >
-                Clear
-              </button>
-            </div>
-            {importResult && (
-              <div
-                className={`import-confirm ${importResult.ok ? "import-success" : "import-error"}`}
-                role="status"
-                aria-live="polite"
-              >
-                {importResult.ok ? (
-                  <>
-                    <strong>Plan loaded successfully.</strong>
-                    <span>
-                      {importResult.itemCount} card{importResult.itemCount === 1 ? "" : "s"}
-                      {importResult.boardName ? ` · Board: ${importResult.boardName}` : ""}
-                      {importResult.listName ? ` · List: ${importResult.listName}` : ""}
-                    </span>
-                    <span className="import-confirm-hint">You can proceed to the next step.</span>
-                  </>
-                ) : (
-                  <>
-                    <strong>Load failed.</strong>
-                    <span>{importResult.error}</span>
-                    <span className="import-confirm-hint">Fix the JSON and click &quot;Load JSON plan&quot; again.</span>
-                  </>
-                )}
+              <div className="import-tabs">
+                <button
+                  type="button"
+                  className={`tab ${importMode === "ai" ? "active" : ""}`}
+                  onClick={() => setImportMode("ai")}
+                >
+                  AI Generate
+                </button>
+                <button
+                  type="button"
+                  className={`tab ${importMode === "json" ? "active" : ""}`}
+                  onClick={() => setImportMode("json")}
+                >
+                  Paste JSON
+                </button>
               </div>
-            )}
-            <p className="helper">
-              Paste JSON with a <code>board</code> (name, labels, lists) where each list has <code>cards</code> with{" "}
-              <code>title</code> and <code>description</code>, or a top-level <code>items</code> array. We validate before any Trello action.
-            </p>
-            <div className="step-actions">
-              <button
-                className="primary"
-                type="button"
-                onClick={() => setActiveStep(2)}
-                disabled={!hasItems}
-              >
-                Next: Board &amp; List
-              </button>
+
+              {importMode === "ai" ? (
+                <LLMPlanner onPlanGenerated={handleLLMPlanGenerated} />
+              ) : (
+                <>
+                  <label>Import JSON plan</label>
+                  <textarea
+                    value={importText}
+                    onChange={(event) => {
+                      setImportText(event.target.value);
+                      setImportResult(null);
+                    }}
+                    placeholder="Paste plan JSON here..."
+                    rows={6}
+                  />
+                  <div className="editor-actions">
+                    <button className="ghost" onClick={loadFromJson} type="button">
+                      Load JSON plan
+                    </button>
+                    <button
+                      className="ghost"
+                      onClick={() => {
+                        setImportText("");
+                        setImportResult(null);
+                      }}
+                      type="button"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {importResult && (
+                <div
+                  className={`import-confirm ${importResult.ok ? "import-success" : "import-error"}`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {importResult.ok ? (
+                    <>
+                      <strong>Plan loaded successfully.</strong>
+                      <span>
+                        {importResult.itemCount} card{importResult.itemCount === 1 ? "" : "s"}
+                        {importResult.boardName ? ` · Board: ${importResult.boardName}` : ""}
+                        {importResult.listName ? ` · List: ${importResult.listName}` : ""}
+                      </span>
+                      <span className="import-confirm-hint">You can proceed to the next step.</span>
+                    </>
+                  ) : (
+                    <>
+                      <strong>Load failed.</strong>
+                      <span>{importResult.error}</span>
+                      <span className="import-confirm-hint">
+                        {importMode === "json"
+                          ? "Fix the JSON and click \"Load JSON plan\" again."
+                          : "Check your API key and try again."}
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+              {importMode === "json" && (
+                <p className="helper">
+                  Paste JSON with a <code>board</code> (name, labels, lists) where each list has <code>cards</code> with{" "}
+                  <code>title</code> and <code>description</code>, or a top-level <code>items</code> array. We validate before any Trello action.
+                </p>
+              )}
+              <div className="step-actions">
+                <button
+                  className="primary"
+                  type="button"
+                  onClick={() => setActiveStep(2)}
+                  disabled={!hasItems}
+                >
+                  Next: Board &amp; List
+                </button>
+              </div>
+              {!hasItems && !importResult?.ok && importMode === "json" && (
+                <p className="helper">Click &quot;Load JSON plan&quot; to validate and load, then proceed.</p>
+              )}
+              {!hasItems && importResult?.ok === false && importMode === "json" && (
+                <p className="helper">Fix the JSON and load again to continue.</p>
+              )}
             </div>
-            {!hasItems && !importResult?.ok && (
-              <p className="helper">Click &quot;Load JSON plan&quot; to validate and load, then proceed.</p>
-            )}
-            {!hasItems && importResult?.ok === false && (
-              <p className="helper">Fix the JSON and load again to continue.</p>
-            )}
-          </div>
           )}
 
           {activeStep === 2 && (

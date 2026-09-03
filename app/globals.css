@@ -963,3 +963,114 @@ a {
     color: #0b0d10;
   }
 }
+
+/* Import mode tabs */
+.import-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  background: #f1e9dc;
+  border-radius: 999px;
+  border: 1px solid #e2d7c6;
+  margin-bottom: 8px;
+}
+
+.import-tabs .tab {
+  flex: 1;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-weight: 600;
+  padding: 10px 16px;
+}
+
+.import-tabs .tab.active {
+  background: var(--card);
+  color: var(--ink);
+  border-color: #e2d7c6;
+  box-shadow: var(--shadow);
+}
+
+/* LLM Planner */
+.llm-planner {
+  display: grid;
+  gap: 16px;
+}
+
+.llm-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.llm-section label {
+  margin: 0;
+}
+
+.llm-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.checkbox-label {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400 !important;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: auto;
+}
+
+.link-btn {
+  background: transparent;
+  color: var(--accent-dark);
+  padding: 0;
+  font-size: 0.9rem;
+  text-decoration: underline;
+}
+
+.link-btn:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.badge {
+  display: inline-block;
+  background: var(--teal);
+  color: white;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.llm-info {
+  padding-top: 8px;
+  border-top: 1px solid #efe2d1;
+}
+
+.llm-info .helper {
+  margin: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .import-tabs {
+    background: #1b2025;
+    border-color: #2b3137;
+  }
+
+  .import-tabs .tab.active {
+    border-color: #2b3137;
+  }
+
+  .llm-info {
+    border-color: #2b3137;
+  }
+}

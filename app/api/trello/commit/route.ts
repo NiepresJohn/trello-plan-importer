@@ -45,20 +45,21 @@ export async function POST(request: Request) {
 
   const results = [] as Array<{ ok: boolean; name: string; listName?: string; shortUrl?: string; error?: string }>;
 
-  const resolvedBoard = await resolveOrCreateBoard(plan.boardName, process.env.DEFAULT_BOARD_ID || undefined);
-  if (!resolvedBoard.ok) {
+  const resolvedBoardResult = await resolveOrCreateBoard(plan.boardName, process.env.DEFAULT_BOARD_ID || undefined);
+  if (!resolvedBoardResult.ok) {
     let parsed = null as null | Record<string, unknown>;
     try {
-      parsed = JSON.parse(resolvedBoard.text);
+      parsed = JSON.parse(resolvedBoardResult.text);
     } catch {
       parsed = { error: "Board not found" };
     }
-    return NextResponse.json({ ok: false, ...parsed }, { status: resolvedBoard.status });
+    return NextResponse.json({ ok: false, ...parsed }, { status: resolvedBoardResult.status });
   }
+  const resolvedBoard = resolvedBoardResult.data;
 
   // Fix #4: only archive existing lists when replace is explicitly true
   if (replace) {
-    const existingLists = await getLists(resolvedBoard.data.id);
+    const existingLists = await getLists(resolvedBoard.id);
     if (existingLists.ok && existingLists.data.length > 0) {
       for (const list of existingLists.data) {
         await archiveList(list.id);
@@ -71,13 +72,13 @@ export async function POST(request: Request) {
     const name = listName.trim() || defaultListName;
     let id = listNameToId.get(name);
     if (id) return id;
-    const resolved = await resolveOrCreateList(resolvedBoard.data.id, name);
+    const resolved = await resolveOrCreateList(resolvedBoard.id, name);
     if (!resolved.ok) return null;
     listNameToId.set(name, resolved.data.id);
     return resolved.data.id;
   }
 
-  const labelsResp = await getLabels(resolvedBoard.data.id);
+  const labelsResp = await getLabels(resolvedBoard.id);
   if (!labelsResp.ok) {
     return NextResponse.json(
       { ok: false, error: "Trello API error while fetching labels", trelloStatus: labelsResp.status },
@@ -128,7 +129,7 @@ export async function POST(request: Request) {
           );
           let labelId = existing ? existing.id : null;
           if (!labelId && allowCreate) {
-            const created = await createLabel(resolvedBoard.data.id, labelName, labelColor);
+            const created = await createLabel(resolvedBoard.id, labelName, labelColor);
             if (created.ok) {
               labelId = created.data.id;
             }
