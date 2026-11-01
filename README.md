@@ -10,9 +10,7 @@
 
 **Transform LLM-generated project plans into organized Trello boards instantly**
 
-[Demo](https://your-demo-url.com) · [Report Bug](../../issues) · [Request Feature](../../issues)
-
-![Preview](https://via.placeholder.com/800x400/f7f2e9/1b1b1b?text=Trello+Plan+Importer+Preview)
+[Report Bug](../../issues) · [Request Feature](../../issues)
 
 </div>
 
@@ -96,8 +94,8 @@ Whether you're breaking down a sprint, organizing a product launch, or structuri
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org) 18+ installed
-- [Git](https://git-scm.com) for cloning
+- [Node.js](https://nodejs.org) 18.18+ installed
+- npm (bundled with Node) and [Git](https://git-scm.com)
 - A [Trello](https://trello.com) account
 
 ### Trello API Setup
@@ -117,13 +115,9 @@ You'll need two credentials from Trello:
 
 > ⚠️ **Important:** Your token grants full access to your Trello account. Keep it secret!
 
-#### 3. Webhook Secret
+#### 3. Optional access gate
 
-Generate a secure random string (32+ characters):
-
-```bash
-openssl rand -hex 32
-```
+Generate a random string with `openssl rand -hex 32` and use it for `WEBHOOK_SECRET` and `NEXT_PUBLIC_WEBHOOK_SECRET`.
 
 ### Installation
 
@@ -142,39 +136,21 @@ cp .env.example .env.local
 
 ### Environment Variables
 
-Edit `.env.local`:
-
-```env
-# ─── Required ───────────────────────────────────
-TRELLO_KEY=your_trello_api_key
-TRELLO_TOKEN=your_trello_token
-WEBHOOK_SECRET=your_32_char_random_secret
-
-# ─── Recommended ────────────────────────────────
-DEFAULT_BOARD_NAME=My Project Board
-DEFAULT_LIST_NAME=To Do
-
-# ─── Optional ───────────────────────────────────
-DEFAULT_BOARD_ID=              # Specific board ID (skips name lookup)
-ALLOW_BOARD_CREATE=true        # Allow creating new boards
-ALLOW_LABEL_CREATE=true        # Allow creating new labels
-RATE_LIMIT_PER_MINUTE=30       # API rate limit
-DEFAULT_LLM_PROVIDER=openai    # Default LLM for AI generation
-```
-
-#### Variable Reference
+Edit `.env.local` (see `.env.example`):
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `TRELLO_KEY` | ✅ | — | Trello API key |
-| `TRELLO_TOKEN` | ✅ | — | Trello OAuth token |
-| `WEBHOOK_SECRET` | ✅ | — | Random 32+ char string |
-| `DEFAULT_BOARD_NAME` | — | — | Fallback board name |
-| `DEFAULT_LIST_NAME` | — | `"To Do"` | Fallback list name |
-| `DEFAULT_BOARD_ID` | — | — | Target specific board |
-| `ALLOW_BOARD_CREATE` | — | `true` | Allow board creation |
-| `ALLOW_LABEL_CREATE` | — | `true` | Allow label creation |
-| `RATE_LIMIT_PER_MINUTE` | — | `30` | Max requests per minute |
+| `TRELLO_KEY` | yes | none | Trello API key |
+| `TRELLO_TOKEN` | yes | none | Trello token |
+| `WEBHOOK_SECRET` | no | unset | If set, API requests must send it as `x-webhook-secret`. The browser sends `NEXT_PUBLIC_WEBHOOK_SECRET`, so set both to the same value. This is a light gate, not real auth (the public value is visible in the client bundle) |
+| `NEXT_PUBLIC_WEBHOOK_SECRET` | no | unset | Client copy of `WEBHOOK_SECRET` |
+| `DEFAULT_BOARD_ID` | no | none | Target a specific board, skipping name lookup |
+| `DEFAULT_LIST_NAME` | no | `To Do` | Fallback list name |
+| `ALLOW_BOARD_CREATE` | no | `true` | Allow creating missing boards |
+| `ALLOW_LABEL_CREATE` | no | `false` (`.env.example` sets `true`) | Allow creating missing labels |
+| `RATE_LIMIT_PER_MINUTE` | no | `30` | Max requests per minute per IP |
+
+LLM provider API keys are entered in the UI, never in env files.
 
 ### Run Development Server
 
@@ -485,26 +461,24 @@ RATE_LIMIT_PER_MINUTE=30
 2. Add environment variables in dashboard
 3. Deploy
 
-### Docker
-
-```bash
-# Build image
-docker build -t trello-plan-importer .
-
-# Run container
-docker run -p 3000:3000 \
-  -e TRELLO_KEY=xxx \
-  -e TRELLO_TOKEN=xxx \
-  -e WEBHOOK_SECRET=xxx \
-  trello-plan-importer
-```
-
 ### Self-Hosted
 
 ```bash
 npm run build
 npm start
 ```
+
+---
+
+## 🧰 Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `npm run dev` | Dev server on :3000 |
+| `npm run build` / `npm start` | Production build / serve |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm test` | Vitest unit tests (`tests/`) |
 
 ---
 
@@ -547,7 +521,7 @@ Contributions are welcome! Here's how:
 - Follow existing code style (TypeScript strict mode)
 - Keep components small and focused
 - Add JSDoc comments for public APIs
-- Test your changes with `npm run build`
+- Run `npm run lint && npm run typecheck && npm test && npm run build` before opening a PR
 
 ---
 
