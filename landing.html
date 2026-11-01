@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trello Plan Importer — LLM plans to Trello boards</title>
+<meta name="description" content="Paste or generate a project plan with OpenAI, Claude or Gemini, review it in a visual editor, and deploy it to Trello in one click.">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+:root{--bg:#f7f2e9;--panel:#fffdf8;--line:#e5dccb;--fg:#1b1b1b;--mute:#645e52;--acc:#0f766e;--acc2:#115e59;--code:#efe8d9}
+@media(prefers-color-scheme:dark){:root{--bg:#14171c;--panel:#1b1f26;--line:#2b313b;--fg:#ecebe6;--mute:#a1a6b0;--acc:#2dd4bf;--acc2:#5eead4;--code:#0f1216}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 Inter,system-ui,sans-serif}
+a{color:var(--acc)}code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.w{max-width:1040px;margin:0 auto;padding:0 20px}
+nav{display:flex;justify-content:space-between;align-items:center;padding:20px 0}
+nav b{font-size:19px}nav div a{margin-left:18px;color:var(--mute);text-decoration:none;font-size:14px}nav div a:hover{color:var(--fg)}
+.hero{padding:60px 0 40px;text-align:center}
+.hero h1{font-size:clamp(34px,6vw,60px);line-height:1.06;letter-spacing:-.03em;margin:0 0 18px}
+.hero h1 em{font-style:normal;color:var(--acc)}
+.hero p{max-width:640px;margin:0 auto 26px;color:var(--mute);font-size:18px}
+.btn{display:inline-block;padding:11px 20px;border-radius:9px;font-weight:600;text-decoration:none;margin:4px}
+.p{background:var(--acc);color:#fff}@media(prefers-color-scheme:dark){.p{color:#0f172a}}.s{border:1px solid var(--line);color:var(--fg)}
+section{padding:40px 0}
+h2{font-size:28px;letter-spacing:-.02em;margin:0 0 6px}
+.sub{color:var(--mute);margin:0 0 24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mute);font-size:15px}.card .i{margin-bottom:10px}
+.steps{counter-reset:s}.steps .card{position:relative;padding-top:34px}
+.steps .card:before{counter-increment:s;content:counter(s);position:absolute;top:-14px;left:18px;width:30px;height:30px;border-radius:50%;background:var(--acc);color:#fff;display:grid;place-items:center;font-weight:700}
+pre{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:16px;overflow:auto;font-size:13px;line-height:1.55;margin:0}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mute);font-weight:600}
+.tbl{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.tbl td:first-child{white-space:nowrap}
+.ba td:first-child{color:var(--mute);text-decoration:line-through}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+.tags span{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:3px 12px;margin:3px;font-size:13px;color:var(--mute)}
+footer{border-top:1px solid var(--line);padding:28px 0;color:var(--mute);font-size:14px;text-align:center;margin-top:30px}
+
+.ic{width:24px;height:24px;color:var(--acc);display:block}
+a,.btn,.card{transition:color .18s ease,background-color .18s ease,border-color .18s ease}
+.btn,nav a{cursor:pointer}.btn:hover{filter:brightness(1.1)}.s:hover{border-color:var(--acc)}.card:hover{border-color:var(--acc)}
+:focus-visible{outline:3px solid var(--acc);outline-offset:3px;border-radius:4px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div class="w">
+<nav><b>Trello Plan Importer</b><div><a href="#features">Features</a><a href="#how">How it works</a><a href="#json">JSON</a><a href="#setup">Setup</a><a href="#api">API</a><a href="https://github.com/NiepresJohn/trello-plan-importer">GitHub</a></div></nav>
+
+<header class="hero">
+<h1>Turn LLM plans into <em>Trello boards</em>, instantly.</h1>
+<p>Paste JSON from ChatGPT, Claude or Gemini — or generate it in the app. Review and edit every card, then deploy to Trello in one click.</p>
+<a class="btn p" href="#setup">Get started</a><a class="btn s" href="https://github.com/NiepresJohn/trello-plan-importer">View on GitHub</a>
+</header>
+
+<section style="padding-top:0"><div class="tbl ba"><table>
+<tr><th>Before</th><th>After</th></tr>
+<tr><td>Copy-paste LLM output into Trello manually</td><td>One-click deployment with full review</td></tr>
+<tr><td>Lose structure and context</td><td>Preserved hierarchy with labels and checklists</td></tr>
+<tr><td>No way to validate before committing</td><td>Visual editor with validation</td></tr>
+<tr><td>Repetitive manual card creation</td><td>Batch import with concurrency</td></tr>
+</table></div></section>
+
+<section id="features"><h2>Everything it offers</h2><p class="sub">Generate, edit, deploy — with credentials kept server-side.</p>
+<div class="grid">
+<div class="card"><div class="i"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/></svg></div><h3>Multi-provider LLMs</h3><p>OpenAI, Anthropic Claude and Google Gemini. Your key stays in sessionStorage.</p></div>
+<div class="card"><div class="i"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></div><h3>Built-in AI generation</h3><p>Describe a project in plain text and get a plan without leaving the app.</p></div>
+<div class="card"><div class="i"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h4"/></svg></div><h3>Smart parsing</h3><p>Handles multiple JSON shapes and normalizes alternate field names automatically.</p></div>
+<div class="card"><div class="i"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></div><h3>Visual card editor</h3><p>Edit titles, descriptions and due dates. Delete cards you don't want.</p></div>
+<div class="card"><div class="i"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg></div><h3>Labels &amp; checklists</h3><p>Add or remove colored labels and break cards into actionable subtasks.</p></div>
+<div class="card"><div class="i"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h6l2-8 4 16 2-8h2"/></svg></div><h3>Draft persistence</h3><p>Auto-saved to localStorage, with a 7-day expiry warning. Save, restore or reset.</p></div>
+<div class="card"><div class="i"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/></svg></div><h3>One-click commit</h3><p>Confirmation modal, then real-time per-card progress with links to Trello.</p></div>
+<div class="card"><div class="i"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></div><h3>Replace mode</h3><p>Archive old lists and create fresh ones. Pick an existing board or create a new one.</p></div>
+<div class="card"><div class="i"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h4"/></svg></div><h3>Concurrent processing</h3><p>Parallel API calls create cards about 5× faster.</p></div>
+<div class="card"><div class="i"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></div><h3>Server-side credentials</h3><p>Trello key and token never reach the client.</p></div>
+<div class="card"><div class="i"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg></div><h3>Webhook auth</h3><p>Optional secret validation using timing-safe comparison.</p></div>
+<div class="card"><div class="i"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h6l2-8 4 16 2-8h2"/></svg></div><h3>Rate limiting &amp; validation</h3><p>Sliding-window abuse protection and strict payload size and content limits.</p></div>
+</div></section>
+
+<section id="how"><h2>How it works</h2><p class="sub">Three steps from idea to board.</p>
+<div class="grid steps" style="margin-top:20px">
+<div class="card"><h3>Generate</h3><p>Pick a provider and describe your project, or switch to <b>Paste JSON</b> and load an existing plan.</p></div>
+<div class="card"><h3>Import &amp; review</h3><p>Choose a board, toggle replace mode, then edit titles, dates, labels and checklists card by card.</p></div>
+<div class="card"><h3>Commit to Trello</h3><p>Confirm, watch real-time progress, and open each card in Trello.</p></div>
+</div></section>
+
+<section id="json"><h2>Two JSON formats</h2><p class="sub">Use whichever your LLM produces — it's normalized for you.</p>
+<div class="two">
+<pre><b>Simple — flat task list</b>
+{
+  "boardName": "Website Redesign",
+  "listName": "To Do",
+  "items": [{
+    "name": "Design homepage mockup",
+    "desc": "3 variations for A/B testing",
+    "due": "2026-03-15T17:00:00Z",
+    "labels": ["P0", "Design"],
+    "checklist": ["Sketch wireframes",
+                  "Get feedback"]
+  }]
+}</pre>
+<pre><b>Board — multi-list</b>
+{
+  "board": {
+    "name": "Mobile App Launch",
+    "labels": [{ "id": "l1", "name": "P0",
+                 "color": "red" }],
+    "lists": [{
+      "name": "Backlog",
+      "cards": [{ "title": "Research competitors",
+                  "labelIds": ["l1"] }]
+    }]
+  }
+}</pre></div>
+<br>
+<div class="tbl"><table>
+<tr><th>Field</th><th>Limit</th><th>Description</th></tr>
+<tr><td><code>name</code></td><td>required, 500 chars</td><td>Card title</td></tr>
+<tr><td><code>desc</code></td><td>5000 chars</td><td>Card description</td></tr>
+<tr><td><code>due</code></td><td>ISO 8601</td><td>Due date</td></tr>
+<tr><td><code>labels</code></td><td>max 10</td><td>Names or <code>{ name, color }</code></td></tr>
+<tr><td><code>checklist</code></td><td>max 50</td><td>Subtask strings</td></tr>
+<tr><td><code>listName</code></td><td>—</td><td>Override list for this card</td></tr>
+</table></div>
+<p class="sub" style="margin-top:14px">Colors: <code>yellow purple blue red green orange black sky pink lime</code>. Aliases like <code>title→name</code>, <code>description→desc</code>, <code>columns→lists</code> work too.</p>
+</section>
+
+<section id="setup"><h2>Setup in minutes</h2><p class="sub">Node 18+ and a Trello account. Get your key and token at <a href="https://trello.com/app-key">trello.com/app-key</a>.</p>
+<pre>git clone https://github.com/NiepresJohn/trello-plan-importer.git
+cd trello-plan-importer
+npm install
+cp .env.example .env.local     # then fill in credentials
+npm run dev                    # → http://localhost:3000</pre>
+<br>
+<div class="tbl"><table>
+<tr><th>Variable</th><th>Req.</th><th>Default</th><th>Description</th></tr>
+<tr><td><code>TRELLO_KEY</code></td><td>Yes</td><td>—</td><td>Trello API key</td></tr>
+<tr><td><code>TRELLO_TOKEN</code></td><td>Yes</td><td>—</td><td>Trello token</td></tr>
+<tr><td><code>WEBHOOK_SECRET</code></td><td>Yes</td><td>—</td><td>Random 32+ chars (<code>openssl rand -hex 32</code>)</td></tr>
+<tr><td><code>DEFAULT_BOARD_NAME</code></td><td></td><td>—</td><td>Fallback board name</td></tr>
+<tr><td><code>DEFAULT_LIST_NAME</code></td><td></td><td>To Do</td><td>Fallback list name</td></tr>
+<tr><td><code>DEFAULT_BOARD_ID</code></td><td></td><td>—</td><td>Target a specific board</td></tr>
+<tr><td><code>ALLOW_BOARD_CREATE</code></td><td></td><td>true</td><td>Allow board creation</td></tr>
+<tr><td><code>ALLOW_LABEL_CREATE</code></td><td></td><td>true</td><td>Allow label creation</td></tr>
+<tr><td><code>RATE_LIMIT_PER_MINUTE</code></td><td></td><td>30</td><td>Max requests per minute</td></tr>
+<tr><td><code>DEFAULT_LLM_PROVIDER</code></td><td></td><td>openai</td><td>Default AI provider</td></tr>
+</table></div></section>
+
+<section id="api"><h2>Under the hood</h2><p class="sub">Next.js 15 App Router, strict TypeScript, React 18 hooks, plain CSS with light/dark variables.</p>
+<div class="two">
+<div class="card"><h3>API routes</h3><table>
+<tr><td><code>GET /api/trello/meta</code></td><td>Boards and lists (filter by <code>boardName</code> / <code>boardId</code>)</td></tr>
+<tr><td><code>POST /api/trello/commit</code></td><td>Create or update a board from a plan; supports <code>replace</code></td></tr>
+<tr><td><code>POST /api/llm/generate</code></td><td>Generate a plan with the chosen provider</td></tr>
+</table></div>
+<div class="card"><h3>Code map</h3><table>
+<tr><td><code>components/</code></td><td>TaskPlanner, LLMPlanner, Stepper, LabelEditor, ChecklistEditor</td></tr>
+<tr><td><code>hooks/</code></td><td>useDraftPlan, useTrelloMeta, useCommit</td></tr>
+<tr><td><code>lib/</code></td><td>auth, llm, plan, rateLimit, trello</td></tr>
+</table></div></div>
+<div class="tags" style="margin-top:14px"><span>Next.js 15</span><span>TypeScript</span><span>React 18</span><span>Trello REST API</span><span>OpenAI</span><span>Anthropic</span><span>Gemini</span><span>MIT</span></div>
+</section>
+
+<footer>Trello Plan Importer · <a href="https://github.com/NiepresJohn/trello-plan-importer">github.com/NiepresJohn/trello-plan-importer</a></footer>
+</div>
+</body>
+</html>
