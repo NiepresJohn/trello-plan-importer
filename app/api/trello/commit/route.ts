@@ -16,6 +16,19 @@ import {
 } from "../../../lib/trello";
 
 export async function POST(request: Request) {
+  try {
+    return await handleCommit(request);
+  } catch (err) {
+    console.error("[commit] Unexpected error:", err);
+    const missing = err instanceof Error && err.message.startsWith("Missing required environment variable");
+    return NextResponse.json(
+      { ok: false, error: missing ? "Server is missing Trello credentials (TRELLO_KEY / TRELLO_TOKEN)." : "Unexpected server error." },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleCommit(request: Request) {
   // Fix #3: validate webhook secret
   if (!validateWebhookSecret(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });

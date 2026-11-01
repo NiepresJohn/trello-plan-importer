@@ -25,7 +25,10 @@ export function useCommit() {
     try {
       const res = await fetch("/api/trello/commit", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-webhook-secret": process.env.NEXT_PUBLIC_WEBHOOK_SECRET || "",
+        },
         body: JSON.stringify({ plan, replace }),
       });
       const data = await res.json();
